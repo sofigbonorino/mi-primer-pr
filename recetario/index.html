@@ -1,0 +1,408 @@
+<title>Mi Recetario</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: cuaderno de cocina — una columna angosta, tarjetas de receta como fichas, medidas resaltadas como etiquetas */
+:root {
+  --bg: #f2f4ee;
+  --surface: #ffffff;
+  --ink: #23291f;
+  --muted: #5f6a58;
+  --line: #d7ddcf;
+  --herb: #3d6b35;
+  --herb-soft: #e3ecdc;
+  --saffron: #b7790f;
+  --saffron-soft: #f8ecd2;
+  --danger: #a33a2a;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161a14; --surface: #20261d; --ink: #e9eee3; --muted: #a3ae9a; --line: #353f30;
+    --herb: #8fc47f; --herb-soft: #2a3a25; --saffron: #e6b04a; --saffron-soft: #3b2f17; --danger: #e48a79;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161a14; --surface: #20261d; --ink: #e9eee3; --muted: #a3ae9a; --line: #353f30;
+  --herb: #8fc47f; --herb-soft: #2a3a25; --saffron: #e6b04a; --saffron-soft: #3b2f17; --danger: #e48a79;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 720px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.01em; }
+h2 { font-size: 1.5rem; font-weight: 800; }
+h3 { font-size: 1.05rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+p { margin: 0; }
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+header.top .sub { color: var(--muted); font-size: 0.95rem; }
+nav.tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+button, .btn {
+  font: inherit; font-weight: 700; border-radius: 10px; border: 1.5px solid var(--line);
+  background: var(--surface); color: var(--ink); padding: 9px 14px; cursor: pointer;
+}
+button:focus-visible, input:focus-visible, textarea:focus-visible, .card:focus-visible { outline: 3px solid var(--saffron); outline-offset: 2px; }
+button.primary { background: var(--herb); border-color: var(--herb); color: var(--bg); }
+button.ghost { background: transparent; }
+button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+button[aria-pressed="true"] { background: var(--herb-soft); border-color: var(--herb); color: var(--ink); }
+button:disabled { opacity: 0.55; cursor: progress; }
+input[type="search"], input[type="text"], textarea {
+  font: inherit; width: 100%; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line);
+  background: var(--surface); color: var(--ink);
+}
+textarea { min-height: 150px; resize: vertical; }
+label.lbl { font-weight: 700; display: block; margin-bottom: 6px; }
+.hint { color: var(--muted); font-size: 0.9rem; }
+.stack { display: grid; gap: 14px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.panel { background: var(--surface); border: 1.5px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.list { display: grid; gap: 10px; }
+.card {
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 14px 16px;
+  display: grid; gap: 4px; cursor: pointer; text-align: left; font-weight: 400; width: 100%;
+}
+.card:hover { border-color: var(--herb); }
+.card .t { font-family: var(--display); font-weight: 600; font-size: 1.15rem; }
+.card .m { color: var(--muted); font-size: 0.9rem; }
+.tag { display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--saffron-soft); color: var(--saffron); }
+.empty { text-align: center; color: var(--muted); padding: 32px 12px; border: 1.5px dashed var(--line); border-radius: 14px; }
+ul.ing { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; }
+ul.ing li { display: grid; grid-template-columns: 7.5rem 1fr; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+ul.ing li:last-child { border-bottom: 0; }
+.qty { font-weight: 700; color: var(--herb); font-variant-numeric: tabular-nums; }
+.orig { color: var(--muted); font-size: 0.85rem; }
+.swap { font-size: 0.85rem; color: var(--saffron); font-weight: 700; }
+ol.steps { margin: 0; padding-left: 1.4rem; display: grid; gap: 10px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chips button { padding: 6px 12px; border-radius: 999px; font-weight: 400; }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.thumbs img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--line); }
+.notice { padding: 10px 14px; border-radius: 10px; background: var(--saffron-soft); color: var(--ink); font-size: 0.95rem; }
+.notice.err { background: transparent; border: 1.5px solid var(--danger); color: var(--danger); }
+.working { color: var(--muted); font-style: italic; white-space: pre-wrap; max-height: 160px; overflow: auto; font-size: 0.85rem; }
+@media (max-width: 480px) { ul.ing li { grid-template-columns: 6rem 1fr; } h1 { font-size: 1.7rem; } }
+@media (prefers-reduced-motion: no-preference) { .card { transition: border-color .15s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Mi Recetario</h1>
+      <p class="sub">Tus recetas, en tazas y cucharadas.</p>
+    </div>
+    <nav class="tabs" aria-label="Secciones">
+      <button id="tab-lista" data-view="lista">Recetas</button>
+      <button id="tab-nueva" data-view="nueva" class="primary">+ Nueva</button>
+      <button id="tab-ajustes" data-view="ajustes">Mis medidas</button>
+    </nav>
+  </header>
+  <div id="status" hidden></div>
+  <main id="main" class="stack"></main>
+</div>
+
+<script>
+(() => {
+  const DEFAULT_PREFS = {
+    medidas: ["taza", "cucharada", "cucharadita", "unidad", "pizca", "°C"],
+    notas: "Taza de 240 ml. Prefiero fracciones simples (1/2, 1/3, 1/4)."
+  };
+  const TODAS_MEDIDAS = ["taza", "cucharada", "cucharadita", "unidad", "pizca", "gramos", "ml", "°C", "°F"];
+
+  const S = {
+    view: "lista", recetas: [], cargando: true, sinConexion: false, db: null, sample: null, imgLimits: null,
+    prefs: { ...DEFAULT_PREFS }, buscar: "", abierta: null, borrador: null, editId: null,
+    texto: "", pedido: "", fotos: [], trabajando: false, progreso: "", error: "", confirmarBorrar: false, cambio: ""
+  };
+  const $main = document.getElementById("main");
+  const $status = document.getElementById("status");
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function go(view) { S.view = view; S.error = ""; S.confirmarBorrar = false; render(); window.scrollTo(0, 0); }
+  document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.view === "nueva") { S.borrador = null; S.editId = null; S.texto = ""; S.pedido = ""; S.fotos = []; }
+    go(b.dataset.view);
+  }));
+
+  function setStatus(msg, err) {
+    $status.hidden = !msg; $status.className = "notice" + (err ? " err" : ""); $status.textContent = msg || "";
+  }
+
+  /* ---------- prompts ---------- */
+  function reglas() {
+    return `Medidas que usa la persona: ${S.prefs.medidas.join(", ")}.
+Preferencias: ${S.prefs.notas || "(ninguna)"}
+Reglas de conversión:
+- Pasá cada cantidad a las medidas de la persona. Equivalencias: 1 taza = 240 ml, 1 cucharada = 15 ml, 1 cucharadita = 5 ml.
+- Gramos a taza según el ingrediente (aprox.): harina 125 g, azúcar 200 g, azúcar impalpable 120 g, azúcar mascabo 220 g, manteca 225 g, cacao 90 g, avena 90 g, arroz 190 g, leche/agua 240 g, aceite 220 g, miel 340 g, nueces picadas 120 g, queso rallado 100 g. Para otros, estimá con criterio.
+- Cantidades chicas (menos de 1/4 taza) en cucharadas o cucharaditas.
+- Usá fracciones simples: 1/4, 1/3, 1/2, 2/3, 3/4, y combinaciones como "1 1/2".
+- Lo que se cuenta (huevos, dientes de ajo, cebollas) queda en "unidad". "A gusto" se mantiene.
+- Temperaturas y tiempos de horno en la unidad de temperatura de la persona, en los pasos.
+- En "original" poné la cantidad como venía (ej. "250 g"), o "" si no cambió.
+- Escribí en español rioplatense, claro y corto.`;
+  }
+  const FORMA = `Respondé SOLO con JSON, con esta forma exacta:
+{"titulo": string, "porciones": string, "tiempo": string,
+ "ingredientes": [{"cantidad": string, "unidad": string, "ingrediente": string, "original": string, "reemplaza": string, "nota": string}],
+ "pasos": [string], "notas": string}
+"reemplaza" es el ingrediente original si este es un reemplazo pedido, si no "". "nota" es opcional (ej. "aprox."). Si falta un dato usá "".`;
+
+  async function convertir() {
+    if (!S.sample) return;
+    if (!S.texto.trim() && !S.fotos.length) { S.error = "Pegá el texto de la receta o subí una foto."; render(); return; }
+    S.trabajando = true; S.error = ""; S.progreso = ""; render();
+    const prompt = `Sos un asistente de cocina. Te paso una receta ${S.fotos.length ? "en foto(s)" : ""}${S.fotos.length && S.texto.trim() ? " y en texto" : ""}. Leela entera y pasala a las medidas de la persona.
+${reglas()}
+Reemplazos o cambios que pide la persona: ${S.pedido.trim() || "(ninguno)"}
+Si pide reemplazar algo, ajustá cantidades y pasos para que la receta siga funcionando.
+${S.texto.trim() ? "Receta en texto:\n" + S.texto.trim() : ""}
+${FORMA}`;
+    try {
+      const opts = { modelTier: "default" };
+      if (S.fotos.length) opts.images = S.fotos.map(f => f.file);
+      const r = await S.sample.json(prompt, opts);
+      S.borrador = limpiar(r); S.editId = null;
+    } catch (e) { S.error = mensajeError(e); }
+    S.trabajando = false; render();
+  }
+
+  async function cambiarIngredientes() {
+    const rec = S.recetas.find(r => r.id === S.abierta);
+    if (!rec || !S.cambio.trim() || !S.sample) return;
+    S.trabajando = true; S.error = ""; render();
+    const { id, creada, actualizada, ...cuerpo } = rec;
+    const prompt = `Sos un asistente de cocina. Esta es una receta guardada (JSON):
+${JSON.stringify(cuerpo)}
+La persona pide este cambio: ${S.cambio.trim()}
+Aplicá el cambio, ajustá cantidades y pasos para que la receta siga funcionando, y mantené todo lo demás igual.
+${reglas()}
+${FORMA}`;
+    try {
+      S.borrador = limpiar(await S.sample.json(prompt, { modelTier: "default" }));
+      S.editId = rec.id; S.cambio = ""; S.view = "nueva";
+    } catch (e) { S.error = mensajeError(e); }
+    S.trabajando = false; render();
+  }
+
+  function limpiar(r) {
+    const str = v => (typeof v === "string" ? v : v == null ? "" : String(v));
+    return {
+      titulo: str(r?.titulo) || "Receta sin nombre", porciones: str(r?.porciones), tiempo: str(r?.tiempo),
+      ingredientes: (Array.isArray(r?.ingredientes) ? r.ingredientes : []).map(i => ({
+        cantidad: str(i?.cantidad), unidad: str(i?.unidad), ingrediente: str(i?.ingrediente),
+        original: str(i?.original), reemplaza: str(i?.reemplaza), nota: str(i?.nota)
+      })),
+      pasos: (Array.isArray(r?.pasos) ? r.pasos : []).map(str).filter(Boolean),
+      notas: str(r?.notas)
+    };
+  }
+  function mensajeError(e) {
+    const c = e?.code;
+    if (c === "not_granted") return "Para convertir recetas tenés que permitir que la página use Claude. Podés activarlo desde el menú Permisos del artifact.";
+    if (c === "rate_limited") return "Claude está ocupado. Esperá un minuto y probá de nuevo.";
+    if (c === "image_rejected") return "No pude leer esa foto. Probá con una imagen JPG o PNG más chica.";
+    if (c === "images_unavailable") return "En esta vista no se pueden mandar fotos. Pegá la receta como texto.";
+    return "No pude convertir la receta (" + (e?.message || "error desconocido") + "). Probá de nuevo.";
+  }
+
+  /* ---------- guardar ---------- */
+  async function guardar() {
+    if (!S.db || !S.borrador) return;
+    S.trabajando = true; render();
+    const ahora = new Date().toISOString();
+    try {
+      if (S.editId) {
+        await S.db.doc("recetas/" + S.editId).update({ ...S.borrador, actualizada: ahora });
+        S.abierta = S.editId;
+      } else {
+        const ref = await S.db.collection("recetas").add({ ...S.borrador, creada: ahora, actualizada: ahora });
+        S.abierta = ref.id;
+      }
+      S.borrador = null; S.editId = null; S.texto = ""; S.pedido = ""; S.fotos = [];
+      S.view = "receta"; setStatus("Receta guardada.");
+      setTimeout(() => setStatus(""), 2500);
+    } catch (e) { S.error = "No pude guardar: " + (e?.message || e?.code || "error"); }
+    S.trabajando = false; render();
+  }
+  async function borrar(id) {
+    try { await S.db.doc("recetas/" + id).delete(); S.abierta = null; go("lista"); }
+    catch (e) { S.error = "No pude borrar: " + (e?.message || "error"); render(); }
+  }
+  async function guardarPrefs() {
+    if (!S.db) return;
+    try { await S.db.doc("ajustes/prefs").set({ medidas: S.prefs.medidas, notas: S.prefs.notas }); setStatus("Medidas guardadas."); setTimeout(() => setStatus(""), 2500); }
+    catch (e) { setStatus("No pude guardar tus medidas: " + (e?.message || "error"), true); }
+  }
+
+  /* ---------- vistas ---------- */
+  function vistaReceta(r, extra = "") {
+    const meta = [r.porciones && "Rinde " + r.porciones, r.tiempo].filter(Boolean).map(esc).join(" · ");
+    return `<article class="panel">
+      <div class="stack" style="gap:6px"><h2>${esc(r.titulo)}</h2>${meta ? `<p class="hint">${meta}</p>` : ""}</div>
+      <div class="stack" style="gap:6px"><h3>Ingredientes</h3>
+        <ul class="ing">${r.ingredientes.map(i => `<li>
+          <span class="qty">${esc([i.cantidad, i.unidad].filter(Boolean).join(" ")) || "—"}</span>
+          <span>${esc(i.ingrediente)}${i.nota ? ` <span class="orig">(${esc(i.nota)})</span>` : ""}
+            ${i.reemplaza ? `<br><span class="swap">↺ en lugar de ${esc(i.reemplaza)}</span>` : ""}
+            ${i.original ? `<br><span class="orig">original: ${esc(i.original)}</span>` : ""}</span>
+        </li>`).join("")}</ul>
+      </div>
+      ${r.pasos.length ? `<div class="stack" style="gap:8px"><h3>Preparación</h3><ol class="steps">${r.pasos.map(p => `<li>${esc(p)}</li>`).join("")}</ol></div>` : ""}
+      ${r.notas ? `<div class="stack" style="gap:6px"><h3>Notas</h3><p>${esc(r.notas)}</p></div>` : ""}
+      ${extra}
+    </article>`;
+  }
+
+  function render() {
+    document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-current", b.dataset.view === S.view ? "page" : "false"));
+    const err = S.error ? `<div class="notice err" role="alert">${esc(S.error)}</div>` : "";
+
+    if (S.view === "lista") {
+      const q = S.buscar.trim().toLowerCase();
+      const lista = S.recetas.filter(r => !q || r.titulo.toLowerCase().includes(q) || r.ingredientes.some(i => i.ingrediente.toLowerCase().includes(q)));
+      let cuerpo;
+      if (S.cargando && !S.recetas.length) cuerpo = `<div class="empty">${S.sinConexion ? "No puedo conectarme a tus recetas todavía. Revisá la conexión." : "Cargando tus recetas…"}</div>`;
+      else if (!S.db) cuerpo = `<div class="empty">Abrí esta página con tu cuenta de Claude para guardar recetas.</div>`;
+      else if (!S.recetas.length) cuerpo = `<div class="empty">Todavía no tenés recetas.<br>Tocá <b>+ Nueva</b> y pegá una receta o subí una foto.</div>`;
+      else if (!lista.length) cuerpo = `<div class="empty">Ninguna receta coincide con “${esc(S.buscar)}”.</div>`;
+      else cuerpo = `<div class="list">${lista.map(r => `<button class="card" data-open="${esc(r.id)}">
+          <span class="t">${esc(r.titulo)} ${r.ejemplo ? '<span class="tag">ejemplo</span>' : ""}</span>
+          <span class="m">${esc([r.porciones && "Rinde " + r.porciones, r.tiempo, r.ingredientes.length + " ingredientes"].filter(Boolean).join(" · "))}</span>
+        </button>`).join("")}</div>`;
+      $main.innerHTML = `${err}<input type="search" id="buscar" placeholder="Buscar por nombre o ingrediente" value="${esc(S.buscar)}" aria-label="Buscar recetas">${cuerpo}`;
+      const $b = document.getElementById("buscar");
+      $b.addEventListener("input", () => { S.buscar = $b.value; const pos = $b.selectionStart; render(); const n = document.getElementById("buscar"); n.focus(); n.setSelectionRange(pos, pos); });
+      $main.querySelectorAll("[data-open]").forEach(c => c.addEventListener("click", () => { S.abierta = c.dataset.open; go("receta"); }));
+      return;
+    }
+
+    if (S.view === "receta") {
+      const r = S.recetas.find(x => x.id === S.abierta);
+      if (!r) { $main.innerHTML = `<div class="empty">Esa receta ya no está.</div>`; return; }
+      const extra = `
+        <div class="stack" style="gap:8px;border-top:1.5px solid var(--line);padding-top:14px">
+          <label class="lbl" for="cambio">Cambiar ingredientes</label>
+          <input type="text" id="cambio" placeholder="Ej: sin manteca, usar aceite / sin azúcar / para 8 porciones" value="${esc(S.cambio)}">
+          <div class="row">
+            <button class="primary" id="btn-cambiar" ${S.trabajando || !S.sample ? "disabled" : ""}>${S.trabajando ? "Cambiando…" : "Aplicar cambio"}</button>
+            ${S.sample ? "" : '<span class="hint">Necesita permiso para usar Claude.</span>'}
+          </div>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <button class="ghost" id="btn-volver">← Volver</button>
+          ${S.confirmarBorrar
+            ? `<span class="row"><span>¿Borrar esta receta?</span><button class="danger" id="btn-si">Sí, borrar</button><button class="ghost" id="btn-no">No</button></span>`
+            : `<button class="danger" id="btn-borrar">Borrar</button>`}
+        </div>`;
+      $main.innerHTML = err + vistaReceta(r, extra);
+      const $c = document.getElementById("cambio");
+      $c.addEventListener("input", () => S.cambio = $c.value);
+      $c.addEventListener("keydown", e => { if (e.key === "Enter") cambiarIngredientes(); });
+      document.getElementById("btn-cambiar").addEventListener("click", cambiarIngredientes);
+      document.getElementById("btn-volver").addEventListener("click", () => go("lista"));
+      document.getElementById("btn-borrar")?.addEventListener("click", () => { S.confirmarBorrar = true; render(); });
+      document.getElementById("btn-no")?.addEventListener("click", () => { S.confirmarBorrar = false; render(); });
+      document.getElementById("btn-si")?.addEventListener("click", () => borrar(r.id));
+      return;
+    }
+
+    if (S.view === "nueva") {
+      if (S.borrador) {
+        $main.innerHTML = `${err}<div class="notice">Revisá cómo quedó. ${S.editId ? "Si te gusta, guardá los cambios." : "Si te gusta, guardala."}</div>
+          ${vistaReceta(S.borrador)}
+          <div class="row">
+            <button class="primary" id="btn-guardar" ${S.trabajando || !S.db ? "disabled" : ""}>${S.editId ? "Guardar cambios" : "Guardar receta"}</button>
+            <button class="ghost" id="btn-descartar">Descartar</button>
+          </div>`;
+        document.getElementById("btn-guardar").addEventListener("click", guardar);
+        document.getElementById("btn-descartar").addEventListener("click", () => {
+          const volver = S.editId; S.borrador = null; S.editId = null;
+          if (volver) { S.abierta = volver; go("receta"); } else render();
+        });
+        return;
+      }
+      const puedeFotos = !!S.imgLimits;
+      $main.innerHTML = `${err}<section class="panel">
+        <h2>Nueva receta</h2>
+        <div><label class="lbl" for="texto">Receta</label>
+          <textarea id="texto" placeholder="Pegá la receta como la encontraste: 250 g de harina, 100 g de manteca, 2 huevos…">${esc(S.texto)}</textarea></div>
+        <div class="stack" style="gap:8px">
+          <label class="lbl" for="fotos" style="margin:0">Fotos de la receta</label>
+          ${puedeFotos
+            ? `<input type="file" id="fotos" accept="${esc(S.imgLimits.mediaTypes.join(","))}" multiple>
+               <span class="hint">Podés subir hasta ${S.imgLimits.maxCount} fotos (de un libro, una captura, una nota escrita).</span>`
+            : `<span class="hint">${S.sample ? "Subir fotos no está disponible en esta vista." : "Para leer fotos, la página necesita permiso para usar Claude."}</span>`}
+          ${S.fotos.length ? `<div class="thumbs">${S.fotos.map((f, i) => `<img src="${f.url}" alt="Foto ${i + 1}">`).join("")}</div>
+            <button class="ghost" id="btn-quitar" style="justify-self:start">Quitar fotos</button>` : ""}
+        </div>
+        <div><label class="lbl" for="pedido">¿Querés reemplazar algo?</label>
+          <input type="text" id="pedido" placeholder="Ej: cambiar manteca por aceite, sin huevo, azúcar mascabo en vez de blanca" value="${esc(S.pedido)}"></div>
+        <div class="row">
+          <button class="primary" id="btn-convertir" ${S.trabajando || !S.sample ? "disabled" : ""}>${S.trabajando ? "Convirtiendo…" : "Pasar a mis medidas"}</button>
+          <span class="hint">Usa: ${esc(S.prefs.medidas.join(", "))}</span>
+        </div>
+        ${S.sample ? "" : '<p class="hint">Para convertir recetas, abrí la página en claude.ai y permití que use Claude.</p>'}
+      </section>`;
+      const $t = document.getElementById("texto"), $p = document.getElementById("pedido");
+      $t.addEventListener("input", () => S.texto = $t.value);
+      $p.addEventListener("input", () => S.pedido = $p.value);
+      document.getElementById("btn-convertir").addEventListener("click", convertir);
+      document.getElementById("btn-quitar")?.addEventListener("click", () => { S.fotos.forEach(f => URL.revokeObjectURL(f.url)); S.fotos = []; render(); });
+      document.getElementById("fotos")?.addEventListener("change", e => {
+        const max = S.imgLimits?.maxCount || 5;
+        const nuevas = [...e.target.files].slice(0, Math.max(0, max - S.fotos.length));
+        S.fotos.push(...nuevas.map(file => ({ file, url: URL.createObjectURL(file) })));
+        render();
+      });
+      return;
+    }
+
+    if (S.view === "ajustes") {
+      $main.innerHTML = `${err}<section class="panel">
+        <h2>Mis medidas</h2>
+        <p class="hint">Elegí las medidas que usás en tu cocina. Las recetas nuevas se van a convertir a estas.</p>
+        <div class="chips" role="group" aria-label="Medidas">${TODAS_MEDIDAS.map(m =>
+          `<button data-m="${esc(m)}" aria-pressed="${S.prefs.medidas.includes(m)}">${esc(m)}</button>`).join("")}</div>
+        <div><label class="lbl" for="notas">Otras preferencias</label>
+          <textarea id="notas" style="min-height:90px" placeholder="Ej: mi taza es de 250 ml; el horno lo pongo en mínimo/medio/fuerte">${esc(S.prefs.notas)}</textarea></div>
+        <div class="row"><button class="primary" id="btn-prefs" ${S.db ? "" : "disabled"}>Guardar mis medidas</button></div>
+      </section>`;
+      $main.querySelectorAll("[data-m]").forEach(b => b.addEventListener("click", () => {
+        const m = b.dataset.m, set = new Set(S.prefs.medidas);
+        set.has(m) ? set.delete(m) : set.add(m);
+        S.prefs.medidas = TODAS_MEDIDAS.filter(x => set.has(x)); S.prefs.notas = document.getElementById("notas").value; render();
+      }));
+      document.getElementById("btn-prefs").addEventListener("click", () => { S.prefs.notas = document.getElementById("notas").value; guardarPrefs(); });
+    }
+  }
+
+  render();
+
+  /* ---------- conexión con Claude ---------- */
+  (async () => {
+    const [db, sample] = await Promise.all([claude.use("db"), claude.use("sample")]);
+    S.db = db; S.sample = sample;
+    if (sample) { try { S.imgLimits = (await sample.limits())?.images || null; } catch { S.imgLimits = null; } }
+    if (!db) { S.cargando = false; render(); return; }
+    const timer = setTimeout(() => { S.sinConexion = true; render(); }, 10000);
+    db.collection("recetas").orderBy("actualizada", "desc").onSnapshot(snap => {
+      S.recetas = snap.docs.map(d => ({ id: d.id, ...limpiar(d.data()), ejemplo: !!d.data()?.ejemplo, actualizada: d.data()?.actualizada || "" }));
+      if (!snap.metadata.fromCache) { clearTimeout(timer); S.cargando = false; S.sinConexion = false; }
+      render();
+    }, e => { clearTimeout(timer); S.cargando = false; S.error = "No pude leer tus recetas (" + (e?.message || e?.code) + ")."; render(); });
+    db.doc("ajustes/prefs").onSnapshot(snap => {
+      if (snap.exists) { const d = snap.data(); S.prefs = { medidas: Array.isArray(d.medidas) && d.medidas.length ? d.medidas : DEFAULT_PREFS.medidas, notas: typeof d.notas === "string" ? d.notas : "" }; if (S.view !== "ajustes") render(); }
+    }, () => {});
+  })();
+})();
+</script>
