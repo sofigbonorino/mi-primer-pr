@@ -400,7 +400,7 @@ ${FORMA}`;
           <input type="file" id="fotos" accept="image/*" multiple>
           <span class="hint">Hasta ${maxFotos} fotos: capturas de Instagram, fotos de un libro o de una nota. En la compu también podés pegar una captura con Ctrl+V.</span>
           ${S.cargandoFotos ? '<span class="hint">Preparando fotos…</span>' : ""}
-          ${S.fotos.length ? `<div class="thumbs">${S.fotos.map((f, i) => `<img src="${f.url}" alt="Foto ${i + 1}">`).join("")}</div>
+          ${S.fotos.length ? `<div class="thumbs">${S.fotos.map((f, i) => f.url ? `<img src="${f.url}" alt="Foto ${i + 1}">` : `<span class="tag">Foto ${i + 1} lista</span>`).join("")}</div>
             <button class="ghost" id="btn-quitar" style="justify-self:start">Quitar fotos</button>` : ""}
         </div>
         <div><label class="lbl" for="pedido">¿Querés reemplazar algo?</label>
@@ -417,7 +417,7 @@ ${FORMA}`;
       $p.addEventListener("input", () => S.pedido = $p.value);
       document.getElementById("btn-convertir").addEventListener("click", convertir);
       document.getElementById("btn-mano").addEventListener("click", () => abrirEditor({ titulo: "" }, null));
-      document.getElementById("btn-quitar")?.addEventListener("click", () => { S.fotos.forEach(f => URL.revokeObjectURL(f.url)); S.fotos = []; render(); });
+      document.getElementById("btn-quitar")?.addEventListener("click", () => { S.fotos = []; render(); });
       document.getElementById("fotos")?.addEventListener("change", e => agregarFotos([...e.target.files]));
       return;
     }
@@ -493,20 +493,44 @@ ${FORMA}`;
   }
 
   /* ---------- fotos: se achican y se pasan a JPG para que cualquier captura funcione ---------- */
+  const leerComoDataURL = blob => new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = mal; r.readAsDataURL(blob); });
+  const cargarImg = src => new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = src; });
+  function tipoReal(file) {
+    if (file.type && file.type.startsWith("image/")) return file.type;
+    const n = (file.name || "").toLowerCase();
+    if (/\.png$/.test(n)) return "image/png";
+    if (/\.webp$/.test(n)) return "image/webp";
+    if (/\.gif$/.test(n)) return "image/gif";
+    return "image/jpeg";
+  }
+  // Abre la foto de varias formas (cada celular se comporta distinto)
+  async function abrirImagen(file) {
+    try { if (window.createImageBitmap) { const bm = await createImageBitmap(file); return { src: bm, w: bm.width, h: bm.height }; } } catch {}
+    try { const url = await leerComoDataURL(file); const img = await cargarImg(url); return { src: img, w: img.naturalWidth, h: img.naturalHeight, url }; } catch {}
+    const u = URL.createObjectURL(file);
+    try { const img = await cargarImg(u); return { src: img, w: img.naturalWidth, h: img.naturalHeight }; } catch { return null; } finally { setTimeout(() => URL.revokeObjectURL(u), 1000); }
+  }
   async function prepararFoto(file) {
-    const src = URL.createObjectURL(file);
-    try {
-      const img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = src; });
-      const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
-      const c = document.createElement("canvas");
-      c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
-      const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85));
-      if (!blob) throw new Error("sin imagen");
-      return { file: blob, url: URL.createObjectURL(blob) };
-    } catch { return null; }
-    finally { URL.revokeObjectURL(src); }
+    const tipo = tipoReal(file);
+    const original = file.type === tipo ? file : new Blob([file], { type: tipo });
+    const abierta = await abrirImagen(file);
+    if (abierta && abierta.w && abierta.h) {
+      try {
+        const k = Math.min(1, 2000 / Math.max(abierta.w, abierta.h));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(abierta.w * k)); c.height = Math.max(1, Math.round(abierta.h * k));
+        const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(abierta.src, 0, 0, c.width, c.height);
+        const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85));
+        if (blob && blob.size) return { file: blob, url: c.toDataURL("image/jpeg", 0.5) };
+      } catch {}
+    }
+    // No se pudo achicar: se manda la foto tal cual
+    const maxBytes = S.imgLimits?.maxInputBytes;
+    if (maxBytes && original.size > maxBytes) return null;
+    let url = abierta?.url || "";
+    if (!url) { try { url = await leerComoDataURL(original); } catch {} }
+    return { file: original, url };
   }
   async function agregarFotos(archivos) {
     const imgs = archivos.filter(f => f && (!f.type || f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name || "")));
@@ -518,7 +542,7 @@ ${FORMA}`;
     const fallidas = listas.filter(x => !x).length;
     S.fotos.push(...listas.filter(Boolean));
     S.cargandoFotos = false;
-    if (fallidas) S.error = fallidas === 1 ? "No pude abrir una de las fotos. Probá sacar la captura de nuevo o guardarla como JPG." : `No pude abrir ${fallidas} fotos. Probá guardarlas como JPG.`;
+    if (fallidas) S.error = fallidas === 1 ? "Una de las fotos es demasiado pesada. Probá recortarla o sacar la captura de nuevo." : `${fallidas} fotos son demasiado pesadas. Probá recortarlas.`;
     else if (imgs.length > lugar) S.error = `Entran hasta ${max} fotos por receta; agregué las primeras.`;
     render();
   }
