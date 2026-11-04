@@ -90,7 +90,21 @@ ol.steps { margin: 0; padding-left: 1.4rem; display: grid; gap: 10px; }
 .notice { padding: 10px 14px; border-radius: 10px; background: var(--saffron-soft); color: var(--ink); font-size: 0.95rem; }
 .notice.err { background: transparent; border: 1.5px solid var(--danger); color: var(--danger); }
 .working { color: var(--muted); font-style: italic; white-space: pre-wrap; max-height: 160px; overflow: auto; font-size: 0.85rem; }
-@media (max-width: 480px) { ul.ing li { grid-template-columns: 6rem 1fr; } h1 { font-size: 1.7rem; } }
+.filtros { display: flex; gap: 8px; flex-wrap: wrap; }
+.filtros button { padding: 5px 12px; border-radius: 999px; font-weight: 400; font-size: 0.9rem; }
+.who { display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--herb-soft); color: var(--herb); }
+ul.ing li.grupo { display: block; font-weight: 700; color: var(--saffron); font-size: 0.9rem; padding-top: 14px; }
+.ed-row { display: grid; grid-template-columns: 5rem 8rem 1fr auto; gap: 6px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.ed-row .ed-extra { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ed-row input { padding: 7px 9px; font-size: 0.95rem; min-width: 0; }
+.ed-row button { padding: 6px 10px; }
+.ed-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 480px) {
+  ul.ing li { grid-template-columns: 6rem 1fr; } h1 { font-size: 1.7rem; }
+  .ed-row { grid-template-columns: 4.5rem 1fr auto; }
+  .ed-row .ed-ing { grid-column: 1 / -1; grid-row: 2; }
+  .ed-two { grid-template-columns: 1fr; }
+}
 @media (prefers-reduced-motion: no-preference) { .card { transition: border-color .15s; } }
 </style>
 
@@ -152,10 +166,10 @@ Reglas de conversión:
 - Escribí en español rioplatense, claro y corto.`;
   }
   const FORMA = `Respondé SOLO con JSON, con esta forma exacta:
-{"titulo": string, "porciones": string, "tiempo": string,
- "ingredientes": [{"cantidad": string, "unidad": string, "ingrediente": string, "original": string, "reemplaza": string, "nota": string}],
+{"titulo": string, "para": string, "momento": string, "porciones": string, "tiempo": string,
+ "ingredientes": [{"cantidad": string, "unidad": string, "ingrediente": string, "original": string, "reemplaza": string, "nota": string, "grupo": string}],
  "pasos": [string], "notas": string}
-"reemplaza" es el ingrediente original si este es un reemplazo pedido, si no "". "nota" es opcional (ej. "aprox."). Si falta un dato usá "".`;
+"para" es para quién es la receta si se sabe (ej. "Sofi"), "momento" cuándo se come (ej. "Desayuno"). "reemplaza" es el ingrediente original si este es un reemplazo pedido, si no "". "nota" es opcional (ej. "aprox."). "grupo" es la sección del ingrediente si la receta tiene partes (ej. "Cobertura"), si no "". Si falta un dato usá "".`;
 
   async function convertir() {
     if (!S.sample) return;
@@ -197,10 +211,11 @@ ${FORMA}`;
   function limpiar(r) {
     const str = v => (typeof v === "string" ? v : v == null ? "" : String(v));
     return {
-      titulo: str(r?.titulo) || "Receta sin nombre", porciones: str(r?.porciones), tiempo: str(r?.tiempo),
+      titulo: str(r?.titulo) || "Receta sin nombre", para: str(r?.para), momento: str(r?.momento),
+      porciones: str(r?.porciones), tiempo: str(r?.tiempo),
       ingredientes: (Array.isArray(r?.ingredientes) ? r.ingredientes : []).map(i => ({
         cantidad: str(i?.cantidad), unidad: str(i?.unidad), ingrediente: str(i?.ingrediente),
-        original: str(i?.original), reemplaza: str(i?.reemplaza), nota: str(i?.nota)
+        original: str(i?.original), reemplaza: str(i?.reemplaza), nota: str(i?.nota), grupo: str(i?.grupo)
       })),
       pasos: (Array.isArray(r?.pasos) ? r.pasos : []).map(str).filter(Boolean),
       notas: str(r?.notas)
@@ -216,23 +231,49 @@ ${FORMA}`;
   }
 
   /* ---------- guardar ---------- */
-  async function guardar() {
-    if (!S.db || !S.borrador) return;
-    S.trabajando = true; render();
+  async function guardarDatos(datos, id) {
+    if (!S.db || !datos) return false;
+    S.trabajando = true; S.error = ""; render();
     const ahora = new Date().toISOString();
+    const limpio = limpiar(datos);
+    let ok = false;
     try {
-      if (S.editId) {
-        await S.db.doc("recetas/" + S.editId).update({ ...S.borrador, actualizada: ahora });
-        S.abierta = S.editId;
+      if (id) {
+        await S.db.doc("recetas/" + id).update({ ...limpio, actualizada: ahora });
+        S.abierta = id;
       } else {
-        const ref = await S.db.collection("recetas").add({ ...S.borrador, creada: ahora, actualizada: ahora });
+        const ref = await S.db.collection("recetas").add({ ...limpio, creada: ahora, actualizada: ahora });
         S.abierta = ref.id;
       }
-      S.borrador = null; S.editId = null; S.texto = ""; S.pedido = ""; S.fotos = [];
-      S.view = "receta"; setStatus("Receta guardada.");
+      ok = true; setStatus("Receta guardada.");
       setTimeout(() => setStatus(""), 2500);
     } catch (e) { S.error = "No pude guardar: " + (e?.message || e?.code || "error"); }
-    S.trabajando = false; render();
+    S.trabajando = false;
+    return ok;
+  }
+  async function guardar() {
+    if (await guardarDatos(S.borrador, S.editId)) {
+      S.borrador = null; S.editId = null; S.texto = ""; S.pedido = ""; S.fotos = [];
+      S.view = "receta";
+    }
+    render();
+  }
+  function abrirEditor(datos, id) {
+    const d = limpiar(JSON.parse(JSON.stringify(datos)));
+    if (!d.ingredientes.length) d.ingredientes.push(limpiar({ ingredientes: [{}] }).ingredientes[0]);
+    S.ed = { id: id || null, d, pasosTexto: d.pasos.join("\n") };
+    go("editar");
+  }
+  async function guardarEditor() {
+    const d = S.ed.d;
+    d.pasos = S.ed.pasosTexto.split("\n").map(s => s.trim()).filter(Boolean);
+    d.ingredientes = d.ingredientes.filter(i => i.ingrediente.trim() || i.cantidad.trim());
+    if (!d.titulo.trim()) { S.error = "Ponele un nombre a la receta."; render(); return; }
+    if (await guardarDatos(d, S.ed.id)) {
+      if (S.borrador) { S.borrador = null; S.editId = null; S.texto = ""; S.pedido = ""; S.fotos = []; }
+      S.ed = null; S.view = "receta";
+    }
+    render();
   }
   async function borrar(id) {
     try { await S.db.doc("recetas/" + id).delete(); S.abierta = null; go("lista"); }
@@ -247,16 +288,23 @@ ${FORMA}`;
   /* ---------- vistas ---------- */
   function vistaReceta(r, extra = "") {
     const meta = [r.porciones && "Rinde " + r.porciones, r.tiempo].filter(Boolean).map(esc).join(" · ");
+    const chips = [r.para && `<span class="who">${esc(r.para)}</span>`, r.momento && `<span class="tag">${esc(r.momento)}</span>`].filter(Boolean).join(" ");
+    let grupoActual = "";
+    const cabecera = i => {
+      if ((i.grupo || "") === grupoActual) return "";
+      grupoActual = i.grupo || "";
+      return grupoActual ? `<li class="grupo">${esc(grupoActual)}</li>` : "";
+    };
     return `<article class="panel">
-      <div class="stack" style="gap:6px"><h2>${esc(r.titulo)}</h2>${meta ? `<p class="hint">${meta}</p>` : ""}</div>
-      <div class="stack" style="gap:6px"><h3>Ingredientes</h3>
-        <ul class="ing">${r.ingredientes.map(i => `<li>
+      <div class="stack" style="gap:6px"><h2>${esc(r.titulo)}</h2>${chips ? `<div class="row" style="gap:6px">${chips}</div>` : ""}${meta ? `<p class="hint">${meta}</p>` : ""}</div>
+      ${r.ingredientes.length ? `<div class="stack" style="gap:6px"><h3>Ingredientes</h3>
+        <ul class="ing">${r.ingredientes.map(i => `${cabecera(i)}<li>
           <span class="qty">${esc([i.cantidad, i.unidad].filter(Boolean).join(" ")) || "—"}</span>
           <span>${esc(i.ingrediente)}${i.nota ? ` <span class="orig">(${esc(i.nota)})</span>` : ""}
             ${i.reemplaza ? `<br><span class="swap">↺ en lugar de ${esc(i.reemplaza)}</span>` : ""}
             ${i.original ? `<br><span class="orig">original: ${esc(i.original)}</span>` : ""}</span>
         </li>`).join("")}</ul>
-      </div>
+      </div>` : ""}
       ${r.pasos.length ? `<div class="stack" style="gap:8px"><h3>Preparación</h3><ol class="steps">${r.pasos.map(p => `<li>${esc(p)}</li>`).join("")}</ol></div>` : ""}
       ${r.notas ? `<div class="stack" style="gap:6px"><h3>Notas</h3><p>${esc(r.notas)}</p></div>` : ""}
       ${extra}
@@ -269,7 +317,14 @@ ${FORMA}`;
 
     if (S.view === "lista") {
       const q = S.buscar.trim().toLowerCase();
-      const lista = S.recetas.filter(r => !q || r.titulo.toLowerCase().includes(q) || r.ingredientes.some(i => i.ingrediente.toLowerCase().includes(q)));
+      const quienes = r => r.para.split(/,|\sy\s/).map(s => s.trim()).filter(Boolean);
+      const personas = [...new Set(S.recetas.flatMap(quienes))].sort((a, b) => a.localeCompare(b, "es"));
+      if (S.para && !personas.includes(S.para)) S.para = "";
+      const lista = S.recetas.filter(r =>
+        (!S.para || quienes(r).includes(S.para)) &&
+        (!q || r.titulo.toLowerCase().includes(q) || r.momento.toLowerCase().includes(q) || r.ingredientes.some(i => i.ingrediente.toLowerCase().includes(q))));
+      const filtros = personas.length > 1 ? `<div class="filtros" role="group" aria-label="Para quién">${["", ...personas].map(p =>
+        `<button data-para="${esc(p)}" aria-pressed="${(S.para || "") === p}">${p ? "Para " + esc(p) : "Todas"}</button>`).join("")}</div>` : "";
       let cuerpo;
       if (S.cargando && !S.recetas.length) cuerpo = `<div class="empty">${S.sinConexion ? "No puedo conectarme a tus recetas todavía. Revisá la conexión." : "Cargando tus recetas…"}</div>`;
       else if (!S.db) cuerpo = `<div class="empty">Abrí esta página con tu cuenta de Claude para guardar recetas.</div>`;
@@ -277,9 +332,10 @@ ${FORMA}`;
       else if (!lista.length) cuerpo = `<div class="empty">Ninguna receta coincide con “${esc(S.buscar)}”.</div>`;
       else cuerpo = `<div class="list">${lista.map(r => `<button class="card" data-open="${esc(r.id)}">
           <span class="t">${esc(r.titulo)} ${r.ejemplo ? '<span class="tag">ejemplo</span>' : ""}</span>
-          <span class="m">${esc([r.porciones && "Rinde " + r.porciones, r.tiempo, r.ingredientes.length + " ingredientes"].filter(Boolean).join(" · "))}</span>
+          <span class="m">${esc([r.para && "Para " + r.para, r.momento, r.porciones && "Rinde " + r.porciones, r.tiempo].filter(Boolean).join(" · "))}</span>
         </button>`).join("")}</div>`;
-      $main.innerHTML = `${err}<input type="search" id="buscar" placeholder="Buscar por nombre o ingrediente" value="${esc(S.buscar)}" aria-label="Buscar recetas">${cuerpo}`;
+      $main.innerHTML = `${err}<input type="search" id="buscar" placeholder="Buscar por nombre, momento o ingrediente" value="${esc(S.buscar)}" aria-label="Buscar recetas">${filtros}${cuerpo}`;
+      $main.querySelectorAll("[data-para]").forEach(b => b.addEventListener("click", () => { S.para = b.dataset.para; render(); }));
       const $b = document.getElementById("buscar");
       $b.addEventListener("input", () => { S.buscar = $b.value; const pos = $b.selectionStart; render(); const n = document.getElementById("buscar"); n.focus(); n.setSelectionRange(pos, pos); });
       $main.querySelectorAll("[data-open]").forEach(c => c.addEventListener("click", () => { S.abierta = c.dataset.open; go("receta"); }));
@@ -299,7 +355,7 @@ ${FORMA}`;
           </div>
         </div>
         <div class="row" style="justify-content:space-between">
-          <button class="ghost" id="btn-volver">← Volver</button>
+          <span class="row"><button class="ghost" id="btn-volver">← Volver</button><button id="btn-editar">Editar</button></span>
           ${S.confirmarBorrar
             ? `<span class="row"><span>¿Borrar esta receta?</span><button class="danger" id="btn-si">Sí, borrar</button><button class="ghost" id="btn-no">No</button></span>`
             : `<button class="danger" id="btn-borrar">Borrar</button>`}
@@ -310,6 +366,7 @@ ${FORMA}`;
       $c.addEventListener("keydown", e => { if (e.key === "Enter") cambiarIngredientes(); });
       document.getElementById("btn-cambiar").addEventListener("click", cambiarIngredientes);
       document.getElementById("btn-volver").addEventListener("click", () => go("lista"));
+      document.getElementById("btn-editar").addEventListener("click", () => abrirEditor(r, r.id));
       document.getElementById("btn-borrar")?.addEventListener("click", () => { S.confirmarBorrar = true; render(); });
       document.getElementById("btn-no")?.addEventListener("click", () => { S.confirmarBorrar = false; render(); });
       document.getElementById("btn-si")?.addEventListener("click", () => borrar(r.id));
@@ -322,9 +379,11 @@ ${FORMA}`;
           ${vistaReceta(S.borrador)}
           <div class="row">
             <button class="primary" id="btn-guardar" ${S.trabajando || !S.db ? "disabled" : ""}>${S.editId ? "Guardar cambios" : "Guardar receta"}</button>
+            <button id="btn-ed-borrador">Editar antes de guardar</button>
             <button class="ghost" id="btn-descartar">Descartar</button>
           </div>`;
         document.getElementById("btn-guardar").addEventListener("click", guardar);
+        document.getElementById("btn-ed-borrador").addEventListener("click", () => abrirEditor(S.borrador, S.editId));
         document.getElementById("btn-descartar").addEventListener("click", () => {
           const volver = S.editId; S.borrador = null; S.editId = null;
           if (volver) { S.abierta = volver; go("receta"); } else render();
@@ -349,20 +408,73 @@ ${FORMA}`;
           <input type="text" id="pedido" placeholder="Ej: cambiar manteca por aceite, sin huevo, azúcar mascabo en vez de blanca" value="${esc(S.pedido)}"></div>
         <div class="row">
           <button class="primary" id="btn-convertir" ${S.trabajando || !S.sample ? "disabled" : ""}>${S.trabajando ? "Convirtiendo…" : "Pasar a mis medidas"}</button>
-          <span class="hint">Usa: ${esc(S.prefs.medidas.join(", "))}</span>
+          <button class="ghost" id="btn-mano">Escribir a mano, sin convertir</button>
         </div>
+        <p class="hint">Convierte a: ${esc(S.prefs.medidas.join(", "))}</p>
         ${S.sample ? "" : '<p class="hint">Para convertir recetas, abrí la página en claude.ai y permití que use Claude.</p>'}
       </section>`;
       const $t = document.getElementById("texto"), $p = document.getElementById("pedido");
       $t.addEventListener("input", () => S.texto = $t.value);
       $p.addEventListener("input", () => S.pedido = $p.value);
       document.getElementById("btn-convertir").addEventListener("click", convertir);
+      document.getElementById("btn-mano").addEventListener("click", () => abrirEditor({ titulo: "" }, null));
       document.getElementById("btn-quitar")?.addEventListener("click", () => { S.fotos.forEach(f => URL.revokeObjectURL(f.url)); S.fotos = []; render(); });
       document.getElementById("fotos")?.addEventListener("change", e => {
         const max = S.imgLimits?.maxCount || 5;
         const nuevas = [...e.target.files].slice(0, Math.max(0, max - S.fotos.length));
         S.fotos.push(...nuevas.map(file => ({ file, url: URL.createObjectURL(file) })));
         render();
+      });
+      return;
+    }
+
+    if (S.view === "editar") {
+      if (!S.ed) { go("lista"); return; }
+      const d = S.ed.d;
+      const campo = (id, label, val, ph = "") => `<div><label class="lbl" for="${id}">${label}</label><input type="text" id="${id}" data-f="${id.slice(3)}" value="${esc(val)}" placeholder="${esc(ph)}"></div>`;
+      $main.innerHTML = `${err}<section class="panel">
+        <h2>${S.ed.id ? "Editar receta" : "Receta nueva"}</h2>
+        ${campo("ed-titulo", "Nombre", d.titulo, "Ej: Pan de pollo")}
+        <div class="ed-two">${campo("ed-para", "Para", d.para, "Ej: Sofi")}${campo("ed-momento", "Momento", d.momento, "Ej: Desayuno")}</div>
+        <div class="ed-two">${campo("ed-porciones", "Rinde", d.porciones, "Ej: 1 budinera")}${campo("ed-tiempo", "Tiempo", d.tiempo, "Ej: 2 min")}</div>
+        <div class="stack" style="gap:4px">
+          <h3>Ingredientes</h3>
+          <p class="hint">Cantidad, medida e ingrediente. La nota y la sección son opcionales.</p>
+          <div>${d.ingredientes.map((i, n) => `<div class="ed-row">
+            <input type="text" id="ed-c-${n}" data-i="${n}" data-k="cantidad" value="${esc(i.cantidad)}" placeholder="1/2" aria-label="Cantidad">
+            <input type="text" id="ed-u-${n}" data-i="${n}" data-k="unidad" value="${esc(i.unidad)}" placeholder="taza" aria-label="Medida">
+            <input type="text" id="ed-n-${n}" class="ed-ing" data-i="${n}" data-k="ingrediente" value="${esc(i.ingrediente)}" placeholder="harina" aria-label="Ingrediente">
+            <button class="ghost" data-quitar="${n}" aria-label="Quitar ingrediente">✕</button>
+            <div class="ed-extra">
+              <input type="text" id="ed-o-${n}" data-i="${n}" data-k="nota" value="${esc(i.nota)}" placeholder="Nota (opcional)" aria-label="Nota">
+              <input type="text" id="ed-g-${n}" data-i="${n}" data-k="grupo" value="${esc(i.grupo)}" placeholder="Sección, ej. Cobertura" aria-label="Sección">
+            </div>
+          </div>`).join("")}</div>
+          <button id="btn-agregar" style="justify-self:start;margin-top:8px">+ Agregar ingrediente</button>
+        </div>
+        <div><label class="lbl" for="ed-pasos">Preparación</label>
+          <textarea id="ed-pasos" placeholder="Un paso por renglón">${esc(S.ed.pasosTexto)}</textarea>
+          <span class="hint">Escribí un paso por renglón.</span></div>
+        <div><label class="lbl" for="ed-notas">Notas</label>
+          <textarea id="ed-notas" data-f="notas" style="min-height:80px">${esc(d.notas)}</textarea></div>
+        <div class="row">
+          <button class="primary" id="btn-ed-guardar" ${S.trabajando || !S.db ? "disabled" : ""}>Guardar</button>
+          <button class="ghost" id="btn-ed-cancelar">Cancelar</button>
+        </div>
+      </section>`;
+      $main.querySelectorAll("[data-f]").forEach(el => el.addEventListener("input", () => d[el.dataset.f] = el.value));
+      $main.querySelectorAll("[data-i]").forEach(el => el.addEventListener("input", () => d.ingredientes[+el.dataset.i][el.dataset.k] = el.value));
+      document.getElementById("ed-pasos").addEventListener("input", e => S.ed.pasosTexto = e.target.value);
+      $main.querySelectorAll("[data-quitar]").forEach(b => b.addEventListener("click", () => { d.ingredientes.splice(+b.dataset.quitar, 1); render(); }));
+      document.getElementById("btn-agregar").addEventListener("click", () => {
+        const ultimo = d.ingredientes[d.ingredientes.length - 1];
+        d.ingredientes.push({ cantidad: "", unidad: "", ingrediente: "", original: "", reemplaza: "", nota: "", grupo: ultimo?.grupo || "" });
+        render(); document.getElementById("ed-c-" + (d.ingredientes.length - 1))?.focus();
+      });
+      document.getElementById("btn-ed-guardar").addEventListener("click", guardarEditor);
+      document.getElementById("btn-ed-cancelar").addEventListener("click", () => {
+        const id = S.ed.id; S.ed = null;
+        if (S.borrador) go("nueva"); else if (id) { S.abierta = id; go("receta"); } else go("lista");
       });
       return;
     }
