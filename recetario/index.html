@@ -230,6 +230,70 @@ ${FORMA}`;
     return "No pude convertir la receta (" + (e?.message || "error desconocido") + "). Probá de nuevo.";
   }
 
+  /* ---------- recetas parecidas ---------- */
+  const STOP = new Set("de del la el los las en con sin y o a al para por un una unos unas mas muy bien fina fino finita procesada procesado opcional gusto chorrito pizca generosa generoso madura maduro cocido cocida picado picada rallado rallada hervida hervidas hervido duros duras arriba poco tibia relleno express rapido rapidas receta".split(" "));
+  const BASICOS = new Set(["huevo", "sal", "aceite", "agua", "edulcorante", "vainilla", "pimienta", "clara"]);
+  const normTxt = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\(.*?\)/g, " ").replace(/[^a-z\s]/g, " ");
+  const raiz = w => w.length > 4 && w.endsWith("es") ? w.slice(0, -2) : w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w;
+  const palabras = s => normTxt(s).split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)).map(raiz);
+  const claves = r => new Set((r.ingredientes || []).map(i => palabras(i.ingrediente)[0]).filter(k => k && !BASICOS.has(k)));
+  const jaccard = (a, b) => { if (!a.size || !b.size) return 0; let n = 0; a.forEach(x => b.has(x) && n++); return n / (a.size + b.size - n); };
+  function parecidas(nueva, excluirId) {
+    const tn = new Set(palabras(nueva.titulo)), cn = claves(nueva);
+    return S.recetas.filter(r => r.id !== excluirId).map(r => {
+      const cr = claves(r);
+      const score = Math.max(jaccard(tn, new Set(palabras(r.titulo))), cn.size >= 2 && cr.size >= 2 ? jaccard(cn, cr) : 0);
+      return { r, score };
+    }).filter(x => x.score >= 0.6).sort((a, b) => b.score - a.score).slice(0, 3);
+  }
+  function avisoParecidas(lista, titulo) {
+    if (!lista.length) return "";
+    return `<div class="notice stack" style="gap:8px" role="status">
+      <b>${titulo || `Ojo: ya tenés ${lista.length === 1 ? "una receta parecida" : "recetas parecidas"}.`}</b>
+      ${lista.map(({ r, score }) => `<div class="row" style="justify-content:space-between;gap:8px">
+        <span><b>${esc(r.titulo)}</b>${r.para ? ` <span class="hint">· para ${esc(r.para)}</span>` : ""} <span class="hint">· ${score >= 0.8 ? "casi igual" : "parecida"}</span></span>
+        <span class="row" style="gap:6px">
+          <button class="ghost" data-ver="${esc(r.id)}" aria-pressed="${S.verParecida === r.id}">${S.verParecida === r.id ? "Ocultar" : "Ver"}</button>
+          ${S.sample ? `<button data-combinar="${esc(r.id)}" ${S.trabajando ? "disabled" : ""}>${S.trabajando ? "Combinando…" : "Combinar"}</button>` : ""}
+        </span>
+      </div>${S.verParecida === r.id ? vistaReceta(r) : ""}`).join("")}
+    </div>`;
+  }
+  // base: la receta que estás viendo; alGuardarBorrar: si base ya está guardada, la otra se borra al combinar
+  function conectarParecidas(base, baseGuardadaId) {
+    $main.querySelectorAll("[data-ver]").forEach(b => b.addEventListener("click", () => {
+      S.verParecida = S.verParecida === b.dataset.ver ? null : b.dataset.ver; render();
+    }));
+    $main.querySelectorAll("[data-combinar]").forEach(b => b.addEventListener("click", () => {
+      const otra = S.recetas.find(r => r.id === b.dataset.combinar);
+      if (!otra) return;
+      if (baseGuardadaId) combinar(base, otra, baseGuardadaId, otra.id);
+      else combinar(base, otra, otra.id, null);
+    }));
+  }
+  async function combinar(a, b, destinoId, borrarId) {
+    if (!S.sample) return;
+    S.trabajando = true; S.error = ""; render();
+    const sinMeta = ({ id, creada, actualizada, ejemplo, ...x }) => x;
+    const prompt = `Sos un asistente de cocina. Estas son dos versiones de la misma receta (o muy parecidas). Combinálas en UNA sola receta.
+Versión A: ${JSON.stringify(sinMeta(limpiar(a)))}
+Versión B: ${JSON.stringify(sinMeta(limpiar(b)))}
+Reglas para combinar:
+- Elegí el nombre más claro. Mantené "para" y "momento" (si difieren, unilos, ej. "Desayuno / merienda").
+- Usá la versión más completa como base. Si una cantidad o un paso difiere entre versiones, dejá la de la base y anotá la otra como alternativa en "nota" del ingrediente o en "notas" (ej. "Variante: con 2 cucharadas de chía").
+- No pierdas información útil de ninguna de las dos (tips, conservación, variantes).
+- Mantené las medidas como están, no las conviertas de nuevo.
+- Escribí en español rioplatense, claro y corto.
+${FORMA}`;
+    try {
+      S.borrador = limpiar(await S.sample.json(prompt, { modelTier: "default" }));
+      S.editId = destinoId; S.borrarTrasGuardar = borrarId;
+      S.combinando = { destino: S.recetas.find(r => r.id === destinoId)?.titulo || "", borrar: S.recetas.find(r => r.id === borrarId)?.titulo || "" };
+      S.ed = null; S.verParecida = null; S.view = "nueva";
+    } catch (e) { S.error = mensajeError(e).replace("convertir la receta", "combinar las recetas"); }
+    S.trabajando = false; render(); window.scrollTo(0, 0);
+  }
+
   /* ---------- guardar ---------- */
   async function guardarDatos(datos, id) {
     if (!S.db || !datos) return false;
@@ -253,7 +317,12 @@ ${FORMA}`;
   }
   async function guardar() {
     if (await guardarDatos(S.borrador, S.editId)) {
-      S.borrador = null; S.editId = null; S.texto = ""; S.pedido = ""; S.fotos = [];
+      if (S.borrarTrasGuardar && S.borrarTrasGuardar !== S.editId) {
+        try { await S.db.doc("recetas/" + S.borrarTrasGuardar).delete(); setStatus("Recetas combinadas en una sola."); setTimeout(() => setStatus(""), 2500); }
+        catch (e) { S.error = "Guardé la receta combinada, pero no pude borrar la otra. Borrala a mano."; }
+      }
+      S.borrador = null; S.editId = null; S.borrarTrasGuardar = null; S.combinando = null;
+      S.texto = ""; S.pedido = ""; S.fotos = [];
       S.view = "receta";
     }
     render();
@@ -269,6 +338,10 @@ ${FORMA}`;
     d.pasos = S.ed.pasosTexto.split("\n").map(s => s.trim()).filter(Boolean);
     d.ingredientes = d.ingredientes.filter(i => i.ingrediente.trim() || i.cantidad.trim());
     if (!d.titulo.trim()) { S.error = "Ponele un nombre a la receta."; render(); return; }
+    if (!S.ed.id && !S.ed.confirmado) {
+      const sim = parecidas(d, null);
+      if (sim.length) { S.ed.aviso = sim; render(); return; }
+    }
     if (await guardarDatos(d, S.ed.id)) {
       if (S.borrador) { S.borrador = null; S.editId = null; S.texto = ""; S.pedido = ""; S.fotos = []; }
       S.ed = null; S.view = "receta";
@@ -360,7 +433,9 @@ ${FORMA}`;
             ? `<span class="row"><span>¿Borrar esta receta?</span><button class="danger" id="btn-si">Sí, borrar</button><button class="ghost" id="btn-no">No</button></span>`
             : `<button class="danger" id="btn-borrar">Borrar</button>`}
         </div>`;
-      $main.innerHTML = err + vistaReceta(r, extra);
+      const simR = parecidas(r, r.id);
+      $main.innerHTML = err + vistaReceta(r, extra) + avisoParecidas(simR, `Se parece a ${simR.length === 1 ? "otra receta tuya" : "otras recetas tuyas"}. Si es la misma, podés combinarlas en una.`);
+      conectarParecidas(r, r.id);
       const $c = document.getElementById("cambio");
       $c.addEventListener("input", () => S.cambio = $c.value);
       $c.addEventListener("keydown", e => { if (e.key === "Enter") cambiarIngredientes(); });
@@ -375,17 +450,27 @@ ${FORMA}`;
 
     if (S.view === "nueva") {
       if (S.borrador) {
-        $main.innerHTML = `${err}<div class="notice">Revisá cómo quedó. ${S.editId ? "Si te gusta, guardá los cambios." : "Si te gusta, guardala."}</div>
+        const sim = S.editId ? [] : parecidas(S.borrador, null);
+        const top = sim[0]?.r;
+        const c = S.combinando;
+        const explica = c
+          ? `Así quedarían combinadas. Al guardar, reemplaza “${esc(c.destino)}”${c.borrar ? ` y borra “${esc(c.borrar)}”` : ""}.`
+          : `Revisá cómo quedó. ${S.editId ? "Si te gusta, guardá los cambios." : sim.length ? "Podés guardarla como nueva, combinarla con la que ya tenés o reemplazarla." : "Si te gusta, guardala."}`;
+        $main.innerHTML = `${err}${avisoParecidas(sim)}
+          <div class="notice">${explica}</div>
           ${vistaReceta(S.borrador)}
           <div class="row">
-            <button class="primary" id="btn-guardar" ${S.trabajando || !S.db ? "disabled" : ""}>${S.editId ? "Guardar cambios" : "Guardar receta"}</button>
+            <button class="primary" id="btn-guardar" ${S.trabajando || !S.db ? "disabled" : ""}>${c ? "Guardar combinada" : S.editId ? "Guardar cambios" : sim.length ? "Guardar como nueva" : "Guardar receta"}</button>
+            ${top ? `<button id="btn-reemplazar" ${S.trabajando || !S.db ? "disabled" : ""}>Reemplazar “${esc(top.titulo)}”</button>` : ""}
             <button id="btn-ed-borrador">Editar antes de guardar</button>
             <button class="ghost" id="btn-descartar">Descartar</button>
           </div>`;
+        conectarParecidas(S.borrador, null);
         document.getElementById("btn-guardar").addEventListener("click", guardar);
+        document.getElementById("btn-reemplazar")?.addEventListener("click", () => { S.editId = top.id; guardar(); });
         document.getElementById("btn-ed-borrador").addEventListener("click", () => abrirEditor(S.borrador, S.editId));
         document.getElementById("btn-descartar").addEventListener("click", () => {
-          const volver = S.editId; S.borrador = null; S.editId = null;
+          const volver = S.editId; S.borrador = null; S.editId = null; S.borrarTrasGuardar = null; S.combinando = null;
           if (volver) { S.abierta = volver; go("receta"); } else render();
         });
         return;
@@ -451,11 +536,13 @@ ${FORMA}`;
           <span class="hint">Escribí un paso por renglón.</span></div>
         <div><label class="lbl" for="ed-notas">Notas</label>
           <textarea id="ed-notas" data-f="notas" style="min-height:80px">${esc(d.notas)}</textarea></div>
+        ${S.ed.aviso ? avisoParecidas(S.ed.aviso) : ""}
         <div class="row">
-          <button class="primary" id="btn-ed-guardar" ${S.trabajando || !S.db ? "disabled" : ""}>Guardar</button>
+          <button class="primary" id="btn-ed-guardar" ${S.trabajando || !S.db ? "disabled" : ""}>${S.ed.aviso ? "Guardar igual como nueva" : "Guardar"}</button>
           <button class="ghost" id="btn-ed-cancelar">Cancelar</button>
         </div>
       </section>`;
+      conectarParecidas(d, null);
       $main.querySelectorAll("[data-f]").forEach(el => el.addEventListener("input", () => d[el.dataset.f] = el.value));
       $main.querySelectorAll("[data-i]").forEach(el => el.addEventListener("input", () => d.ingredientes[+el.dataset.i][el.dataset.k] = el.value));
       document.getElementById("ed-pasos").addEventListener("input", e => S.ed.pasosTexto = e.target.value);
@@ -465,7 +552,7 @@ ${FORMA}`;
         d.ingredientes.push({ cantidad: "", unidad: "", ingrediente: "", original: "", reemplaza: "", nota: "", grupo: ultimo?.grupo || "" });
         render(); document.getElementById("ed-c-" + (d.ingredientes.length - 1))?.focus();
       });
-      document.getElementById("btn-ed-guardar").addEventListener("click", guardarEditor);
+      document.getElementById("btn-ed-guardar").addEventListener("click", () => { if (S.ed.aviso) S.ed.confirmado = true; guardarEditor(); });
       document.getElementById("btn-ed-cancelar").addEventListener("click", () => {
         const id = S.ed.id; S.ed = null;
         if (S.borrador) go("nueva"); else if (id) { S.abierta = id; go("receta"); } else go("lista");
